@@ -5,9 +5,10 @@
 // valid bids to its paired server, and relays the server's response back
 // to the client.
 //
-// Because registration happens dynamically, you can bring up a brand new
-// proxy (a new range, or another instance of an existing range behind a
-// load balancer) at any time without editing any other file.
+// Every message this proxy sends or receives, at every hop, is printed
+// to the terminal using the BAP/1.0 wire format (see protocol.PrintSent
+// / protocol.PrintReceived) — useful for demonstrating protocol
+// behavior live.
 //
 // Run:
 //
@@ -23,24 +24,20 @@ import (
 	"net"
 	"strconv"
 
-	"github.com/chrisfoong/web-socket-programming/protocol"
+	"auction/protocol"
 )
 
 func registerWithRegistry(proxyID, low, high int, proxyHost, proxyPort string) error {
+	label := fmt.Sprintf("Proxy %d", proxyID)
+
 	conn, err := net.Dial("tcp", protocol.RegistryHost+":"+protocol.RegistryPort)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
 
-	msg := protocol.RegistryMessage{
-		Type:      "register",
-		ProxyID:   proxyID,
-		Low:       low,
-		High:      high,
-		ProxyHost: proxyHost,
-		ProxyPort: proxyPort,
-	}
+	msg := protocol.NewRegisterMessage(proxyID, low, high, proxyHost, proxyPort)
+	protocol.PrintSent(label, msg)
 	if err := protocol.SendMsg(conn, msg); err != nil {
 		return err
 	}
@@ -50,14 +47,17 @@ func registerWithRegistry(proxyID, low, high int, proxyHost, proxyPort string) e
 	if err := protocol.RecvMsg(reader, &resp); err != nil {
 		return err
 	}
-	if resp.Status != "ok" {
-		return fmt.Errorf("registry rejected registration: %s", resp.Reason)
+	protocol.PrintReceived(label, resp)
+
+	if resp.StatusCode != protocol.RegStatusOK {
+		return fmt.Errorf("registry rejected registration: %d %s", resp.StatusCode, resp.StatusPhrase)
 	}
 	return nil
 }
 
-func forwardToServer(serverHost, serverPort string, req protocol.BidRequest) (protocol.BidResponse, error) {
+func forwardToServer(serverHost, serverPort string, proxyID int, req protocol.BidRequest) (protocol.BidResponse, error) {
 	var resp protocol.BidResponse
+	label := fmt.Sprintf("Proxy %d", proxyID)
 
 	conn, err := net.Dial("tcp", serverHost+":"+serverPort)
 	if err != nil {
@@ -65,20 +65,24 @@ func forwardToServer(serverHost, serverPort string, req protocol.BidRequest) (pr
 	}
 	defer conn.Close()
 
+	protocol.PrintSent(label, req)
 	if err := protocol.SendMsg(conn, req); err != nil {
 		return resp, err
 	}
+
 	reader := bufio.NewReader(conn)
 	if err := protocol.RecvMsg(reader, &resp); err != nil {
 		return resp, err
 	}
+	protocol.PrintReceived(label, resp)
 	return resp, nil
 }
 
 func handleClient(conn net.Conn, low, high int, serverHost, serverPort string, proxyID int) {
 	defer conn.Close()
 	addr := conn.RemoteAddr()
-	log.Printf("[Proxy %d] Client connected: %s", proxyID, addr)
+	label := fmt.Sprintf("Proxy %d", proxyID)
+	log.Printf("[%s] Client connected: %s", label, addr)
 	reader := bufio.NewReader(conn)
 
 	for {
@@ -86,32 +90,29 @@ func handleClient(conn net.Conn, low, high int, serverHost, serverPort string, p
 		if err := protocol.RecvMsg(reader, &req); err != nil {
 			break
 		}
+		protocol.PrintReceived(label, req)
 
 		if req.ItemID < low || req.ItemID > high {
-			resp := protocol.BidResponse{
-				Status: "error",
-				Reason: "Proxy " + strconv.Itoa(proxyID) + " only manages items " +
-					strconv.Itoa(low) + "-" + strconv.Itoa(high),
-			}
+			resp := protocol.NewBidResponse(protocol.StatusItemOutOfRange, req.ItemID, 0, "",
+				fmt.Sprintf("Proxy %d only manages items %d-%d", proxyID, low, high))
+			protocol.PrintSent(label, resp)
 			if err := protocol.SendMsg(conn, resp); err != nil {
 				break
 			}
 			continue
 		}
 
-		log.Printf("[Proxy %d] Forwarding bid -> item=%d client=%s amount=%.2f",
-			proxyID, req.ItemID, req.ClientName, req.BidAmount)
-
-		resp, err := forwardToServer(serverHost, serverPort, req)
+		resp, err := forwardToServer(serverHost, serverPort, proxyID, req)
 		if err != nil {
-			resp = protocol.BidResponse{Status: "error", Reason: "Auction server unreachable"}
+			resp = protocol.NewBidResponse(protocol.StatusServerDown, req.ItemID, 0, "", "Auction server unreachable")
 		}
 
+		protocol.PrintSent(label, resp)
 		if err := protocol.SendMsg(conn, resp); err != nil {
 			break
 		}
 	}
-	log.Printf("[Proxy %d] Client disconnected: %s", proxyID, addr)
+	log.Printf("[%s] Client disconnected: %s", label, addr)
 }
 
 func main() {

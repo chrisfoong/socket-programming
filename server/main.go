@@ -36,7 +36,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/chrisfoong/web-socket-programming/protocol"
+	"auction/protocol"
 )
 
 type entry struct {
@@ -170,7 +170,8 @@ func appendAuditLog(line string) {
 func handleProxy(conn net.Conn) {
 	defer conn.Close()
 	addr := conn.RemoteAddr()
-	log.Printf("[Server %d] Proxy connected: %s", shardID, addr)
+	label := fmt.Sprintf("Server %d", shardID)
+	log.Printf("[%s] Proxy connected: %s", label, addr)
 	reader := bufio.NewReader(conn)
 
 	for {
@@ -178,6 +179,7 @@ func handleProxy(conn net.Conn) {
 		if err := protocol.RecvMsg(reader, &req); err != nil {
 			break
 		}
+		protocol.PrintReceived(label, req)
 
 		var resp protocol.BidResponse
 		ts := time.Now().Format("2006-01-02 15:04:05")
@@ -186,36 +188,26 @@ func handleProxy(conn net.Conn) {
 		current, exists := auctions[req.ItemID]
 		if !exists || req.BidAmount > current.Amount {
 			auctions[req.ItemID] = entry{Amount: req.BidAmount, Bidder: req.ClientName}
-			fmt.Printf("[Server %d][%s] Item %3d | HIGHEST BID: $%.2f  by '%s'\n",
-				shardID, time.Now().Format("15:04:05"), req.ItemID, req.BidAmount, req.ClientName)
+			fmt.Printf("[%s][%s] Item %3d | HIGHEST BID: $%.2f  by '%s'\n",
+				label, time.Now().Format("15:04:05"), req.ItemID, req.BidAmount, req.ClientName)
 
-			resp = protocol.BidResponse{
-				Status:        "accepted",
-				ItemID:        req.ItemID,
-				HighestBid:    req.BidAmount,
-				HighestBidder: req.ClientName,
-			}
-			appendAuditLog(fmt.Sprintf("%s | ACCEPTED | item=%d | bidder=%s | amount=%.2f\n",
-				ts, req.ItemID, req.ClientName, req.BidAmount))
+			resp = protocol.NewBidResponse(protocol.StatusBidAccepted, req.ItemID, req.BidAmount, req.ClientName, "")
+			appendAuditLog(fmt.Sprintf("%s | %d %s | item=%d | bidder=%s | amount=%.2f\n",
+				ts, resp.StatusCode, "ACCEPTED", req.ItemID, req.ClientName, req.BidAmount))
 			writeSnapshotLocked()
 		} else {
-			resp = protocol.BidResponse{
-				Status:        "rejected",
-				Reason:        "bid too low",
-				ItemID:        req.ItemID,
-				HighestBid:    current.Amount,
-				HighestBidder: current.Bidder,
-			}
-			appendAuditLog(fmt.Sprintf("%s | REJECTED | item=%d | bidder=%s | amount=%.2f | current_highest=%.2f by %s\n",
-				ts, req.ItemID, req.ClientName, req.BidAmount, current.Amount, current.Bidder))
+			resp = protocol.NewBidResponse(protocol.StatusBidRejected, req.ItemID, current.Amount, current.Bidder, "bid too low")
+			appendAuditLog(fmt.Sprintf("%s | %d %s | item=%d | bidder=%s | amount=%.2f | current_highest=%.2f by %s\n",
+				ts, resp.StatusCode, "REJECTED", req.ItemID, req.ClientName, req.BidAmount, current.Amount, current.Bidder))
 		}
 		mu.Unlock()
 
+		protocol.PrintSent(label, resp)
 		if err := protocol.SendMsg(conn, resp); err != nil {
 			break
 		}
 	}
-	log.Printf("[Server %d] Proxy disconnected: %s", shardID, addr)
+	log.Printf("[%s] Proxy disconnected: %s", label, addr)
 }
 
 func main() {

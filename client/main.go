@@ -2,6 +2,10 @@
 // which proxy currently owns that item's ID range, then connects
 // directly to that proxy — it never needs to know the topology itself.
 //
+// Every message the client sends or receives is printed to the
+// terminal in the BAP/1.0 wire format, including the numeric status
+// code and phrase, so a demo shows exactly what went over the network.
+//
 // Non-interactive:
 //
 //	go run ./client -name Alice -item 42 -amount 150.0
@@ -21,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisfoong/web-socket-programming/protocol"
+	"auction/protocol"
 )
 
 func lookupProxy(itemID int) (protocol.RegistryResponse, error) {
@@ -31,14 +35,18 @@ func lookupProxy(itemID int) (protocol.RegistryResponse, error) {
 	}
 	defer conn.Close()
 
-	if err := protocol.SendMsg(conn, protocol.RegistryMessage{Type: "lookup", ItemID: itemID}); err != nil {
+	msg := protocol.NewLookupMessage(itemID)
+	protocol.PrintSent("Client", msg)
+	if err := protocol.SendMsg(conn, msg); err != nil {
 		return protocol.RegistryResponse{}, err
 	}
+
 	reader := bufio.NewReader(conn)
 	var resp protocol.RegistryResponse
 	if err := protocol.RecvMsg(reader, &resp); err != nil {
 		return protocol.RegistryResponse{}, err
 	}
+	protocol.PrintReceived("Client", resp)
 	return resp, nil
 }
 
@@ -48,12 +56,12 @@ func placeBid(name string, itemID int, amount float64) {
 		fmt.Printf("Could not reach registry at %s:%s. Is it running?\n", protocol.RegistryHost, protocol.RegistryPort)
 		return
 	}
-	if lookup.Status != "ok" {
+	if lookup.StatusCode != protocol.RegStatusOK {
 		reason := lookup.Reason
 		if reason == "" {
-			reason = "no proxy registered for this item"
+			reason = lookup.StatusPhrase
 		}
-		fmt.Printf("No proxy manages item %d (%s).\n", itemID, reason)
+		fmt.Printf("No proxy manages item %d (%d %s).\n", itemID, lookup.StatusCode, reason)
 		return
 	}
 
@@ -64,7 +72,8 @@ func placeBid(name string, itemID int, amount float64) {
 	}
 	defer conn.Close()
 
-	req := protocol.BidRequest{ClientName: name, ItemID: itemID, BidAmount: amount}
+	req := protocol.NewBidRequest(name, itemID, amount)
+	protocol.PrintSent("Client", req)
 	if err := protocol.SendMsg(conn, req); err != nil {
 		fmt.Println("Failed to send bid:", err)
 		return
@@ -76,16 +85,17 @@ func placeBid(name string, itemID int, amount float64) {
 		fmt.Println("No response from proxy.")
 		return
 	}
+	protocol.PrintReceived("Client", resp)
 
-	switch resp.Status {
-	case "accepted":
-		fmt.Printf("Bid accepted! You are the highest bidder on item %d at $%.2f.\n",
-			itemID, resp.HighestBid)
-	case "rejected":
-		fmt.Printf("Bid rejected: item %d already has a higher bid of $%.2f by '%s'.\n",
-			itemID, resp.HighestBid, resp.HighestBidder)
+	switch resp.StatusCode {
+	case protocol.StatusBidAccepted:
+		fmt.Printf("Bid accepted! [%d %s] You are the highest bidder on item %d at $%.2f.\n",
+			resp.StatusCode, resp.StatusPhrase, itemID, resp.HighestBid)
+	case protocol.StatusBidRejected:
+		fmt.Printf("Bid rejected [%d %s]: item %d already has a higher bid of $%.2f by '%s'.\n",
+			resp.StatusCode, resp.StatusPhrase, itemID, resp.HighestBid, resp.HighestBidder)
 	default:
-		fmt.Println("Error:", resp.Reason)
+		fmt.Printf("Error [%d %s]: %s\n", resp.StatusCode, resp.StatusPhrase, resp.Reason)
 	}
 }
 

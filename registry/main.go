@@ -6,9 +6,10 @@
 // or given new ranges without touching any other process's code or
 // config — the registry is the only thing that needs to know about them.
 //
-// Every registration is also appended to registry_audit.log as a plain
-// text record, so you have a durable trail of which proxies came and
-// went and when.
+// Every registration is also appended to data/registry/registry_audit.log
+// as a plain text record. Every message sent or received is printed to
+// the terminal in the BAP/1.0 wire format, including status code and
+// phrase.
 //
 // Run:
 //
@@ -25,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisfoong/web-socket-programming/protocol"
+	"auction/protocol"
 )
 
 type registeredProxy struct {
@@ -81,6 +82,7 @@ func handleConn(conn net.Conn) {
 		if err := protocol.RecvMsg(reader, &msg); err != nil {
 			break
 		}
+		protocol.PrintReceived("Registry", msg)
 
 		switch msg.Type {
 		case "register":
@@ -107,12 +109,14 @@ func handleConn(conn net.Conn) {
 			}
 			mu.Unlock()
 
-			appendAuditLog(fmt.Sprintf("%s | REGISTER | proxy=%d | range=%d-%d | addr=%s:%s\n",
+			appendAuditLog(fmt.Sprintf("%s | 200 REGISTER | proxy=%d | range=%d-%d | addr=%s:%s\n",
 				entry.RegisteredAt.Format("2006-01-02 15:04:05"), entry.ProxyID, entry.Low, entry.High, entry.Host, entry.Port))
 			log.Printf("[Registry] Proxy %d registered: items %d-%d at %s:%s",
 				entry.ProxyID, entry.Low, entry.High, entry.Host, entry.Port)
 
-			protocol.SendMsg(conn, protocol.RegistryResponse{Status: "ok"})
+			resp := protocol.NewRegistryResponse(protocol.RegStatusOK, 0, "", "", "")
+			protocol.PrintSent("Registry", resp)
+			protocol.SendMsg(conn, resp)
 
 		case "lookup":
 			mu.Lock()
@@ -120,21 +124,20 @@ func handleConn(conn net.Conn) {
 			mu.Unlock()
 
 			if !found {
-				protocol.SendMsg(conn, protocol.RegistryResponse{
-					Status: "not_found",
-					Reason: fmt.Sprintf("no proxy registered for item %d", msg.ItemID),
-				})
+				resp := protocol.NewRegistryResponse(protocol.RegStatusNotFound, 0, "", "",
+					fmt.Sprintf("no proxy registered for item %d", msg.ItemID))
+				protocol.PrintSent("Registry", resp)
+				protocol.SendMsg(conn, resp)
 				continue
 			}
-			protocol.SendMsg(conn, protocol.RegistryResponse{
-				Status:    "ok",
-				ProxyID:   p.ProxyID,
-				ProxyHost: p.Host,
-				ProxyPort: p.Port,
-			})
+			resp := protocol.NewRegistryResponse(protocol.RegStatusOK, p.ProxyID, p.Host, p.Port, "")
+			protocol.PrintSent("Registry", resp)
+			protocol.SendMsg(conn, resp)
 
 		default:
-			protocol.SendMsg(conn, protocol.RegistryResponse{Status: "error", Reason: "unknown message type"})
+			resp := protocol.NewRegistryResponse(protocol.RegStatusBadRequest, 0, "", "", "unknown message type")
+			protocol.PrintSent("Registry", resp)
+			protocol.SendMsg(conn, resp)
 		}
 	}
 }
