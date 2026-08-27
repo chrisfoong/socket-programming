@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"auction/protocol"
+	"github.com/chrisfoong/web-socket-programming/protocol"
 )
 
 type registeredProxy struct {

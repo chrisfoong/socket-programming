@@ -21,6 +21,8 @@ profile.cov
 # vendor/
 /bin/
 /data/
+protocol-design.HEIC 
+protocol-design.jpeg
 
 # Go workspace file
 go.work

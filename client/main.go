@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"auction/protocol"
+	"github.com/chrisfoong/web-socket-programming/protocol"
 )
 
 func lookupProxy(itemID int) (protocol.RegistryResponse, error) {

@@ -36,7 +36,7 @@ import (
 	"syscall"
 	"time"
 
-	"auction/protocol"
+	"github.com/chrisfoong/web-socket-programming/protocol"
 )
 
 type entry struct {
