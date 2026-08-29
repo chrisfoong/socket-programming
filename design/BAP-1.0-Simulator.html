@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BAP/1.0 — Live Protocol Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0A0E1A;
+    --panel: #121A2E;
+    --panel-2: #16203A;
+    --border: #232D4D;
+    --text: #E8ECF7;
+    --muted: #8592B4;
+    --gold: #FFC13B;
+    --cyan: #49C7F0;
+    --green: #33D17A;
+    --amber: #F5A524;
+    --gray: #7C87A6;
+    --red: #F1554C;
+    --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: var(--font-mono); min-height: 100vh;
+  }
+  body {
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(73,199,240,0.07), transparent 40%),
+      radial-gradient(circle at 85% 85%, rgba(255,193,59,0.06), transparent 40%);
+  }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 28px 28px 40px; }
+
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 22px; flex-wrap: wrap; gap: 10px; }
+  .brand { display: flex; align-items: baseline; gap: 14px; }
+  .brand .mark { font-family: var(--font-display); font-weight: 700; font-size: 26px; letter-spacing: 0.5px; }
+  .brand .mark span { color: var(--gold); }
+  .brand .tagline { color: var(--muted); font-size: 13px; }
+  .live-badge {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 11px; letter-spacing: 1.5px;
+    color: var(--green); border: 1px solid rgba(51,209,122,0.35); background: rgba(51,209,122,0.08);
+    padding: 5px 12px; border-radius: 100px; text-transform: uppercase;
+  }
+  .live-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+  .grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 20px; }
+  @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px 20px;
+  }
+  .panel h2 {
+    font-family: var(--font-display); font-size: 14px; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 14px; font-weight: 700;
+  }
+  .panel h2 .n { color: var(--gold); margin-right: 6px; }
+
+  /* --- topology --- */
+  #topo-wrap { position: relative; }
+  #topo { width: 100%; height: auto; display: block; }
+  .node-label { font-family: var(--font-display); font-weight: 700; font-size: 15px; fill: var(--text); }
+  .node-sub { font-family: var(--font-mono); font-size: 10px; fill: var(--muted); }
+  .edge { stroke: #2B3660; stroke-width: 2; fill: none; }
+  .edge-active { stroke: var(--cyan); stroke-width: 2.5; }
+  .node-circle { fill: var(--panel-2); stroke: #2B3660; stroke-width: 2; transition: all .25s ease; }
+  .node-circle.hot { stroke: var(--cyan); filter: drop-shadow(0 0 10px rgba(73,199,240,0.55)); }
+  .node-circle.down { fill: #2A1416; stroke: var(--red); }
+  .node-badge { font-family: var(--font-display); font-weight: 700; font-size: 20px; fill: var(--gold); }
+  .node-badge.down { fill: var(--red); }
+  #packet { fill: var(--cyan); filter: drop-shadow(0 0 8px rgba(73,199,240,0.9)); opacity: 0; }
+  .down-tag { fill: var(--red); font-size: 9px; font-family: var(--font-mono); letter-spacing: 1px; }
+
+  /* --- controls --- */
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; letter-spacing: .5px; text-transform: uppercase; }
+  .field input {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 10px; border-radius: 8px; font-family: var(--font-mono); font-size: 13px;
+  }
+  .field input:focus { outline: none; border-color: var(--cyan); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  button {
+    font-family: var(--font-mono); cursor: pointer; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); padding: 10px 14px; font-size: 12.5px; transition: all .15s ease;
+  }
+  button:hover { border-color: var(--cyan); color: var(--cyan); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary {
+    width: 100%; background: var(--gold); color: #241A00; border: none; font-weight: 700;
+    padding: 12px 14px; font-size: 13.5px; letter-spacing: .3px; margin-top: 4px;
+  }
+  .btn-primary:hover { color: #241A00; filter: brightness(1.08); border: none; }
+
+  .preset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+  .preset-grid button { text-align: left; font-size: 11.5px; padding: 9px 10px; line-height: 1.4; }
+  .preset-grid button .k { display: block; color: var(--muted); font-size: 9.5px; letter-spacing: .5px; text-transform: uppercase; margin-bottom: 2px; }
+
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+  /* --- state tables --- */
+  .state-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  .shard-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .shard-card .sh-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .shard-card .sh-title { font-family: var(--font-display); font-weight: 700; font-size: 13px; }
+  .shard-status { font-size: 9.5px; padding: 2px 8px; border-radius: 100px; letter-spacing: .5px; text-transform: uppercase; }
+  .shard-status.up { color: var(--green); background: rgba(51,209,122,0.1); }
+  .shard-status.down { color: var(--red); background: rgba(241,85,76,0.12); }
+  .bid-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px dashed #232D4D; }
+  .bid-row:last-child { border-bottom: none; }
+  .bid-row .item { color: var(--muted); }
+  .bid-row .amt { color: var(--gold); font-weight: 700; }
+  .empty-note { color: var(--muted); font-size: 11.5px; padding: 6px 0; }
+
+  /* --- console --- */
+  #console {
+    height: 230px; overflow-y: auto; background: #070A13; border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; font-size: 12px; line-height: 1.65;
+  }
+  #console::-webkit-scrollbar { width: 8px; }
+  #console::-webkit-scrollbar-thumb { background: #232D4D; border-radius: 8px; }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
+  .tag { font-weight: 700; }
+  .tag-client { color: #7DB2FF; }
+  .tag-registry { color: var(--gold); }
+  .tag-proxy1, .tag-proxy2 { color: var(--cyan); }
+  .tag-server1, .tag-server2 { color: #C792EA; }
+  .tag-system { color: var(--muted); font-style: italic; }
+  .code-200 { color: var(--green); }
+  .code-409 { color: var(--amber); }
+  .code-404 { color: var(--gray); }
+  .code-503, .code-500 { color: var(--red); }
+
+  .result-banner {
+    margin-top: 14px; padding: 12px 14px; border-radius: 10px; font-size: 13px; display: none;
+    border: 1px solid var(--border); background: var(--panel-2);
+  }
+  .result-banner.show { display: block; }
+  .result-banner b.code-200 { }
+  .result-banner .rb-code { font-family: var(--font-display); font-weight: 700; font-size: 16px; margin-right: 8px; }
+
+  footer { margin-top: 22px; color: var(--muted); font-size: 11px; text-align: center; }
+  footer b { color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="mark">BAP<span>/1.0</span></div>
+      <div class="tagline">Bid Auction Protocol — live simulator, no server required</div>
+    </div>
+    <div class="live-badge"><span class="dot"></span> simulation running in-browser</div>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: topology + state -->
+    <div class="panel">
+      <h2><span class="n">01</span>Network topology</h2>
+      <div id="topo-wrap">
+        <svg id="topo" viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg">
+          <!-- static edges -->
+          <line class="edge" id="e-client-registry" x1="110" y1="230" x2="470" y2="90"></line>
+          <line class="edge" id="e-client-proxy1"   x1="110" y1="230" x2="470" y2="220"></line>
+          <line class="edge" id="e-client-proxy2"   x1="110" y1="230" x2="470" y2="360"></line>
+          <line class="edge" id="e-proxy1-server1"  x1="530" y1="220" x2="800" y2="220"></line>
+          <line class="edge" id="e-proxy2-server2"  x1="530" y1="360" x2="800" y2="360"></line>
+
+          <!-- Client -->
+          <g>
+            <circle class="node-circle" id="n-client" cx="110" cy="230" r="46"></circle>
+            <text class="node-badge" x="110" y="222" text-anchor="middle">C</text>
+            <text class="node-label" x="110" y="296" text-anchor="middle">Client</text>
+          </g>
+          <!-- Registry -->
+          <g>
+            <circle class="node-circle" id="n-registry" cx="470" cy="90" r="42"></circle>
+            <text class="node-badge" x="470" y="83" text-anchor="middle">R</text>
+            <text class="node-label" x="470" y="150" text-anchor="middle">Registry</text>
+            <text class="node-sub" x="470" y="166" text-anchor="middle">:8000</text>
+          </g>
+          <!-- Proxy 1 / Server 1 -->
+          <g>
+            <circle class="node-circle" id="n-proxy1" cx="470" cy="220" r="42"></circle>
+            <text class="node-badge" x="470" y="213" text-anchor="middle">P1</text>
+            <text class="node-label" x="470" y="279" text-anchor="middle">Proxy 1</text>
+            <text class="node-sub" x="470" y="295" text-anchor="middle">items 1-100</text>
+          </g>
+          <g>
+            <circle class="node-circle" id="n-server1" cx="800" cy="220" r="42"></circle>
+            <text class="node-badge" id="badge-server1" x="800" y="213" text-anchor="middle">S1</text>
+            <text class="node-label" x="800" y="279" text-anchor="middle">Server 1</text>
+            <text class="down-tag" id="tag-server1-down" x="800" y="295" text-anchor="middle" style="display:none">OFFLINE</text>
+          </g>
+          <!-- Proxy 2 / Server 2 -->
+          <g>
+            <circle class="node-circle" id="n-proxy2" cx="470" cy="360" r="42"></circle>
+            <text class="node-badge" x="470" y="353" text-anchor="middle">P2</text>
+            <text class="node-label" x="470" y="419" text-anchor="middle">Proxy 2</text>
+            <text class="node-sub" x="470" y="435" text-anchor="middle">items 101-200</text>
+          </g>
+          <g>
+            <circle class="node-circle" id="n-server2" cx="800" cy="360" r="42"></circle>
+            <text class="node-badge" id="badge-server2" x="800" y="353" text-anchor="middle">S2</text>
+            <text class="node-label" x="800" y="419" text-anchor="middle">Server 2</text>
+            <text class="down-tag" id="tag-server2-down" x="800" y="435" text-anchor="middle" style="display:none">OFFLINE</text>
+          </g>
+
+          <circle id="packet" r="7" cx="110" cy="230"></circle>
+        </svg>
+      </div>
+
+      <div class="state-cols">
+        <div class="shard-card">
+          <div class="sh-head">
+            <span class="sh-title">Shard 1 · items 1-100</span>
+            <span class="shard-status up" id="status-shard1">UP</span>
+          </div>
+          <div id="state-shard1"><div class="empty-note">ยังไม่มี bid เข้ามา</div></div>
+        </div>
+        <div class="shard-card">
+          <div class="sh-head">
+            <span class="sh-title">Shard 2 · items 101-200</span>
+            <span class="shard-status up" id="status-shard2">UP</span>
+          </div>
+          <div id="state-shard2"><div class="empty-note">ยังไม่มี bid เข้ามา</div></div>
+        </div>
+      </div>
+
+      <div class="result-banner" id="result-banner"></div>
+    </div>
+
+    <!-- RIGHT: controls -->
+    <div class="panel">
+      <h2><span class="n">02</span>Place a bid</h2>
+      <div class="field"><label>Client name</label><input id="in-name" value="Alice"></div>
+      <div class="row2">
+        <div class="field"><label>Item ID (1-200)</label><input id="in-item" type="number" value="42" min="1" max="999"></div>
+        <div class="field"><label>Bid amount ($)</label><input id="in-amount" type="number" value="100" min="1"></div>
+      </div>
+      <button class="btn-primary" id="btn-send">ส่ง Bid →</button>
+
+      <div class="divider"></div>
+      <h2><span class="n">03</span>Demo scenarios</h2>
+      <div class="preset-grid">
+        <button data-preset="accept"><span class="k">200</span>Bid ปกติ (accepted)</button>
+        <button data-preset="outbid"><span class="k">200</span>Outbid ราคาที่สูงกว่า</button>
+        <button data-preset="reject"><span class="k">409</span>Bid ต่ำกว่า (rejected)</button>
+        <button data-preset="notfound"><span class="k">404</span>Item นอกช่วง (999)</button>
+      </div>
+
+      <div class="divider"></div>
+      <h2><span class="n">04</span>Fault injection</h2>
+      <div class="preset-grid">
+        <button id="btn-kill-s1">💥 Kill Server 1</button>
+        <button id="btn-restart-s1">♻️ Restart + Restore Snapshot</button>
+        <button id="btn-lock-conflict">🔒 Duplicate Server (Lock Test)</button>
+        <button id="btn-reset">⟲ Reset ทั้งหมด</button>
+      </div>
+
+      <div class="divider"></div>
+      <h2><span class="n">05</span>Live console</h2>
+      <div id="console"></div>
+    </div>
+
+  </div>
+
+  <footer>BAP/1.0 Protocol Simulator — สร้างเพื่อสาธิตพฤติกรรมจริงของระบบ ไม่ได้เชื่อมต่อ server จริง ทุกอย่างจำลองในเบราว์เซอร์ · <b>Pomdet Foong</b></footer>
+</div>
+
+<script>
+(function(){
+  const NODE = {
+    client:   {x:110, y:230},
+    registry: {x:470, y:90},
+    proxy1:   {x:470, y:220},
+    server1:  {x:800, y:220},
+    proxy2:   {x:470, y:360},
+    server2:  {x:800, y:360},
+  };
+
+  const state = {
+    shard1: {}, shard2: {},
+    snapshot1: {}, // last saved snapshot for server 1 (crash-recovery demo)
+    server1Up: true, server2Up: true,
+    busy: false,
+  };
+
+  const consoleEl = document.getElementById('console');
+  const packet = document.getElementById('packet');
+  const bannerEl = document.getElementById('result-banner');
+
+  function log(tagClass, tagText, text) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="tag ${tagClass}">[${tagText}]</span> ${text}`;
+    consoleEl.appendChild(line);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+  function codeSpan(code, phrase) {
+    return `<span class="code-${code}">${code} ${phrase}</span>`;
+  }
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  function setHot(id, on) {
+    document.getElementById(id).classList.toggle('hot', on);
+  }
+  function clearAllHot() {
+    ['n-client','n-registry','n-proxy1','n-proxy2','n-server1','n-server2'].forEach(id => setHot(id, false));
+  }
+
+  async function movePacket(fromKey, toKey, ms) {
+    const a = NODE[fromKey], b = NODE[toKey];
+    packet.style.opacity = 1;
+    const steps = 24;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      packet.setAttribute('cx', a.x + (b.x - a.x) * t);
+      packet.setAttribute('cy', a.y + (b.y - a.y) * t);
+      await sleep(ms / steps);
+    }
+    packet.style.opacity = 0;
+  }
+
+  function pickShard(itemId) {
+    if (itemId >= 1 && itemId <= 100) return 1;
+    if (itemId >= 101 && itemId <= 200) return 2;
+    return null;
+  }
+
+  function renderState() {
+    for (const shardNum of [1, 2]) {
+      const data = state['shard' + shardNum];
+      const el = document.getElementById('state-shard' + shardNum);
+      const isUp = shardNum === 1 ? state.server1Up : state.server2Up;
+      if (!isUp) {
+        el.innerHTML = '<div class="empty-note" style="color:var(--red)">⚠ ไม่สามารถอ่านสถานะได้ — Server ไม่ตอบสนอง</div>';
+        continue;
+      }
+      const keys = Object.keys(data);
+      if (keys.length === 0) {
+        el.innerHTML = '<div class="empty-note">ยังไม่มี bid เข้ามา</div>';
+      } else {
+        el.innerHTML = keys.sort((a,b)=>a-b).map(itemId => {
+          const e = data[itemId];
+          return `<div class="bid-row"><span class="item">item ${itemId} — ${e.bidder}</span><span class="amt">$${e.amount.toFixed(2)}</span></div>`;
+        }).join('');
+      }
+    }
+    const s1up = state.server1Up, s2up = state.server2Up;
+    document.getElementById('status-shard1').textContent = s1up ? 'UP' : 'DOWN';
+    document.getElementById('status-shard1').className = 'shard-status ' + (s1up ? 'up' : 'down');
+    document.getElementById('status-shard2').textContent = s2up ? 'UP' : 'DOWN';
+    document.getElementById('status-shard2').className = 'shard-status ' + (s2up ? 'up' : 'down');
+
+    document.getElementById('n-server1').classList.toggle('down', !s1up);
+    document.getElementById('badge-server1').classList.toggle('down', !s1up);
+    document.getElementById('tag-server1-down').style.display = s1up ? 'none' : 'block';
+  }
+
+  function showBanner(code, phrase, detail) {
+    const colorClass = 'code-' + code;
+    bannerEl.innerHTML = `<span class="rb-code ${colorClass}">${code}</span><b>${phrase}</b><div style="color:var(--muted);margin-top:4px;font-size:12px;">${detail}</div>`;
+    bannerEl.classList.add('show');
+  }
+
+  async function setBusy(b) {
+    state.busy = b;
+    document.getElementById('btn-send').disabled = b;
+    document.querySelectorAll('.preset-grid button').forEach(btn => btn.disabled = b);
+  }
+
+  async function sendBid(name, itemId, amount) {
+    if (state.busy) return;
+    await setBusy(true);
+    clearAllHot();
+    bannerEl.classList.remove('show');
+
+    const req = {protocol:"BAP/1.0", client_name:name, item_id:itemId, bid_amount:amount};
+
+    // Step 1: Client -> Registry (lookup)
+    setHot('n-client', true); setHot('n-registry', true);
+    log('tag-client', 'Client', `SENT &rarr; Registry &nbsp; <span style="color:var(--muted)">{"type":"lookup","item_id":${itemId}}</span>`);
+    await movePacket('client', 'registry', 500);
+
+    const shard = pickShard(itemId);
+
+    if (!shard) {
+      log('tag-registry', 'Registry', `RECEIVED lookup for item ${itemId} &mdash; no proxy owns this range`);
+      log('tag-registry', 'Registry', `SENT &rarr; Client &nbsp; ${codeSpan(404, 'Not Found - No Proxy Registered For Item')}`);
+      await movePacket('registry', 'client', 500);
+      clearAllHot();
+      showBanner(404, 'Not Found', `ไม่มี Proxy ใดลงทะเบียนดูแล item ${itemId} — Client ไม่ได้ติดต่อ Proxy เลยด้วยซ้ำ เพราะ Registry ตอบปฏิเสธตั้งแต่ขั้นแรก`);
+      await setBusy(false);
+      return;
+    }
+
+    const proxyKey = 'proxy' + shard;
+    const serverKey = 'server' + shard;
+    const proxyNode = 'n-' + proxyKey;
+    const serverNode = 'n-' + serverKey;
+
+    log('tag-registry', 'Registry', `RECEIVED lookup for item ${itemId} &mdash; matched Proxy ${shard} (items ${shard===1?'1-100':'101-200'})`);
+    log('tag-registry', 'Registry', `SENT &rarr; Client &nbsp; ${codeSpan(200,'OK')} &nbsp;<span style="color:var(--muted)">proxy_id=${shard}</span>`);
+    await movePacket('registry', 'client', 400);
+    setHot('n-registry', false);
+
+    // Step 2: Client -> Proxy
+    setHot(proxyNode, true);
+    log('tag-client', 'Client', `SENT &rarr; Proxy ${shard} &nbsp; <span style="color:var(--muted)">{"client_name":"${name}","item_id":${itemId},"bid_amount":${amount}}</span>`);
+    await movePacket('client', proxyKey, 500);
+
+    log('tag-' + proxyKey, 'Proxy ' + shard, `RECEIVED BidRequest for item ${itemId} &mdash; within managed range, forwarding`);
+
+    const serverUp = shard === 1 ? state.server1Up : state.server2Up;
+
+    if (!serverUp) {
+      await movePacket(proxyKey, serverKey, 350);
+      log('tag-' + serverKey, 'Server ' + shard, `<span class="code-503">connection refused</span> &mdash; process is not running`);
+      await movePacket(serverKey, proxyKey, 350);
+      log('tag-' + proxyKey, 'Proxy ' + shard, `SENT &rarr; Client &nbsp; ${codeSpan(503, 'Service Unavailable - Server Unreachable')}`);
+      await movePacket(proxyKey, 'client', 500);
+      clearAllHot();
+      showBanner(503, 'Service Unavailable', `Server ${shard} ไม่ตอบสนอง (จำลองว่าล่ม) &mdash; Proxy ${shard} ตรวจพบ connection refused และสร้างคำตอบ 503 ส่งกลับเองโดยไม่รอ`);
+      await setBusy(false);
+      return;
+    }
+
+    // Step 3: Proxy -> Server
+    setHot(serverNode, true);
+    await movePacket(proxyKey, serverKey, 450);
+    log('tag-' + proxyKey, 'Proxy ' + shard, `SENT &rarr; Server ${shard} &nbsp; (forwarded unchanged)`);
+
+    const shardData = state['shard' + shard];
+    const current = shardData[itemId];
+    let statusCode, statusPhrase, highestBid, highestBidder, accepted;
+
+    if (!current || amount > current.amount) {
+      shardData[itemId] = {amount, bidder: name};
+      if (shard === 1) state.snapshot1[itemId] = {amount, bidder: name}; // persisted "snapshot"
+      statusCode = 200; statusPhrase = 'OK - Bid Accepted';
+      highestBid = amount; highestBidder = name; accepted = true;
+      log('tag-' + serverKey, 'Server ' + shard, `mutex.Lock() &rarr; item ${itemId}: $${amount.toFixed(2)} &gt; previous &rarr; <span class="code-200">ACCEPTED</span>`);
+      log('tag-' + serverKey, 'Server ' + shard, `audit log: ACCEPTED item=${itemId} bidder=${name} amount=${amount.toFixed(2)}`);
+      log('tag-' + serverKey, 'Server ' + shard, `snapshot rewritten to disk`);
+    } else {
+      statusCode = 409; statusPhrase = 'Conflict - Bid Too Low';
+      highestBid = current.amount; highestBidder = current.bidder; accepted = false;
+      log('tag-' + serverKey, 'Server ' + shard, `mutex.Lock() &rarr; item ${itemId}: $${amount.toFixed(2)} &le; current $${current.amount.toFixed(2)} by ${current.bidder} &rarr; <span class="code-409">REJECTED</span>`);
+      log('tag-' + serverKey, 'Server ' + shard, `audit log: REJECTED item=${itemId} bidder=${name} amount=${amount.toFixed(2)}`);
+    }
+
+    // Step 4: Server -> Proxy -> Client
+    await movePacket(serverKey, proxyKey, 450);
+    setHot(serverNode, false);
+    log('tag-' + serverKey, 'Server ' + shard, `SENT &rarr; Proxy ${shard} &nbsp; ${codeSpan(statusCode, statusPhrase)}`);
+
+    log('tag-' + proxyKey, 'Proxy ' + shard, `SENT &rarr; Client &nbsp; ${codeSpan(statusCode, statusPhrase)} (relayed)`);
+    await movePacket(proxyKey, 'client', 500);
+    clearAllHot();
+
+    log('tag-client', 'Client', accepted
+      ? `Bid accepted! Highest bid on item ${itemId} is now $${highestBid.toFixed(2)} by ${highestBidder}.`
+      : `Bid rejected: item ${itemId} already has $${highestBid.toFixed(2)} by ${highestBidder}.`);
+
+    showBanner(statusCode, statusPhrase, accepted
+      ? `item ${itemId} ตอนนี้ราคาสูงสุดคือ $${highestBid.toFixed(2)} โดย ${highestBidder}`
+      : `item ${itemId} มีราคาสูงสุดอยู่แล้วคือ $${highestBid.toFixed(2)} โดย ${highestBidder}`);
+
+    renderState();
+    await setBusy(false);
+  }
+
+  // --- wire up UI ---
+  document.getElementById('btn-send').addEventListener('click', () => {
+    const name = document.getElementById('in-name').value.trim() || 'Anonymous';
+    const item = parseInt(document.getElementById('in-item').value, 10);
+    const amount = parseFloat(document.getElementById('in-amount').value);
+    if (!item || !amount) return;
+    sendBid(name, item, amount);
+  });
+
+  document.querySelectorAll('.preset-grid button[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const preset = btn.getAttribute('data-preset');
+      if (preset === 'accept') {
+        document.getElementById('in-name').value = 'Alice';
+        document.getElementById('in-item').value = 42;
+        document.getElementById('in-amount').value = 100;
+      } else if (preset === 'outbid') {
+        const current = state.shard1[42];
+        document.getElementById('in-name').value = 'Bob';
+        document.getElementById('in-item').value = 42;
+        document.getElementById('in-amount').value = (current ? current.amount : 100) + 50;
+      } else if (preset === 'reject') {
+        const current = state.shard1[42];
+        document.getElementById('in-name').value = 'Carol';
+        document.getElementById('in-item').value = 42;
+        document.getElementById('in-amount').value = current ? Math.max(1, current.amount - 30) : 20;
+      } else if (preset === 'notfound') {
+        document.getElementById('in-name').value = 'Eve';
+        document.getElementById('in-item').value = 999;
+        document.getElementById('in-amount').value = 10;
+      }
+      document.getElementById('btn-send').click();
+    });
+  });
+
+  document.getElementById('btn-kill-s1').addEventListener('click', async () => {
+    if (state.busy) return;
+    state.server1Up = false;
+    renderState();
+    log('tag-system', 'System', `<span class="code-503">Server 1 process terminated</span> (simulated crash) &mdash; in-memory state is gone`);
+    document.getElementById('n-server1').style.transition = 'none';
+    document.getElementById('n-server1').classList.add('down');
+  });
+
+  document.getElementById('btn-restart-s1').addEventListener('click', async () => {
+    if (state.busy) return;
+    state.server1Up = true;
+    state.shard1 = JSON.parse(JSON.stringify(state.snapshot1));
+    renderState();
+    const n = Object.keys(state.snapshot1).length;
+    log('tag-system', 'System', `Server 1 restarting...`);
+    log('tag-server1', 'Server 1', `Restored ${n} item(s) from server_1_snapshot.txt`);
+    log('tag-system', 'System', `<span class="code-200">Server 1 back online</span> &mdash; state matches last snapshot, not last memory`);
+  });
+
+  document.getElementById('btn-lock-conflict').addEventListener('click', () => {
+    if (state.busy) return;
+    log('tag-system', 'System', `$ ./bin/server -id 1 -port 6099 -low 1 -high 100`);
+    log('tag-server1', 'Server 1', `<span class="code-500">shard already running (pid 41823 holds server_1.lock) &mdash; refusing to start a duplicate</span>`);
+  });
+
+  document.getElementById('btn-reset').addEventListener('click', () => {
+    if (state.busy) return;
+    state.shard1 = {}; state.shard2 = {}; state.snapshot1 = {};
+    state.server1Up = true; state.server2Up = true;
+    renderState();
+    bannerEl.classList.remove('show');
+    consoleEl.innerHTML = '';
+    log('tag-system', 'System', 'รีเซ็ต simulation ทั้งหมดแล้ว');
+  });
+
+  renderState();
+  log('tag-system', 'System', 'BAP/1.0 simulator พร้อมทำงาน — กด "ส่ง Bid" หรือเลือก demo scenario ด้านขวา');
+})();
+</script>
+</body>
+</html>
