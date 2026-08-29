@@ -23,7 +23,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/chrisfoong/web-socket-programming/protocol"
+	"github.com/chrisfoong/socket-programming/protocol"
 )
 
 func registerWithRegistry(proxyID, low, high int, proxyHost, proxyPort string) error {
