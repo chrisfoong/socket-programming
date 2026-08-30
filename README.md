@@ -1,4 +1,12 @@
-Youtube: https://www.youtube.com/watch?v=axsgPjyPfSk
+
+# Computer Communications and Cloud Computing Principles
+01418351
+
+Youtube: https://www.youtube.com/watch?v=axsgPjyPfSk <br>
+
+นายป้อมเดช ฟุง <br>
+6710451046 <br>
+sec 200 <br>
 
 # Bid Auction Protocol (TCP) — Go version, sharded + dynamic + durable
 
