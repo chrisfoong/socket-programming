@@ -1,3 +1,5 @@
+Youtube: https://www.youtube.com/watch?v=axsgPjyPfSk
+
 # Bid Auction Protocol (TCP) — Go version, sharded + dynamic + durable
 
 ```
