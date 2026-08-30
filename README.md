@@ -1,6 +1,4 @@
-
-# Computer Communications and Cloud Computing Principles
-01418351
+# Computer Communications and Cloud Computing Principles (01418351)
 
 Youtube: https://www.youtube.com/watch?v=axsgPjyPfSk <br>
 
@@ -8,17 +6,14 @@ Youtube: https://www.youtube.com/watch?v=axsgPjyPfSk <br>
 6710451046 <br>
 sec 200 <br>
 
-# Bid Auction Protocol (TCP) — Go version, sharded + dynamic + durable
-
+# Bid Auction Protocol (TCP)
+Client, Registry, Proxy, Server
 ```
-                 ┌──────────────┐
-   register ──▶  │   Registry   │  ◀── lookup
-                 └──────────────┘
 Client ──lookup──▶ Registry ──▶ tells client which proxy to use
 Client ──bid─────▶ Proxy N ────▶ Server N (owns state, writes audit log + snapshot)
 ```
 
-## What's new here
+## Overall
 - **Dynamic proxies**: proxies are no longer listed in a shared, compiled-in
   config. Each proxy is started with its own flags (`-id -low -high -port
   -server-port`) and registers itself with the `registry` on startup. Add a
@@ -36,18 +31,6 @@ Client ──bid─────▶ Proxy N ────▶ Server N (owns state,
   audit log and snapshot files. If the previous holder crashed without
   cleaning up, the stale lock (PID no longer running) is detected and
   reclaimed automatically on the next startup.
-
-## Layout
-```
-auction-go/
-├── go.mod
-├── protocol/protocol.go   # wire format + registry message types
-├── registry/main.go       # discovery service: proxies register, clients look up
-├── client/main.go         # looks up the right proxy via the registry, sends a bid
-├── server/main.go         # per-shard authority: state + audit log + snapshot
-└── pkg/
-    └── proxy/main.go      # flag-configured shard router, registers with registry
-```
 
 | Component | Role | Address |
 |---|---|---|
@@ -171,28 +154,7 @@ then start a new one with `-id 1` — you'll see `Reclaimed stale lock
 data/server_1/server_1.lock (previous owner not running)` instead of a
 refusal.
 
-## Known limitations (good to call out in a writeup)
-- **No heartbeat/TTL in the registry.** A proxy that crashes stays
-  "registered" until it's restarted — the registry has no way to know
-  it's gone. A production version would add periodic re-registration
-  and expire stale entries.
-- **Registry state itself isn't persisted.** `registry_audit.log` is a
-  durable *history* of registrations, but if the registry process
-  restarts, proxies must re-register (or the log could be replayed at
-  startup — not implemented here).
-- **The server lock is single-machine only.** `os.FindProcess` + signal 0
-  checks a PID on the *same* machine — it can't detect a duplicate server
-  for the same shard running on a different host. Preventing that needs a
-  distributed lock (e.g. via the registry itself, or an external store
-  like etcd/Consul/Redis with a TTL-based lease).
-- **Audit log is append-only, unbounded.** Fine for a demo; a long-running
-  system would want rotation or truncation.
-- **Snapshot writes on every accepted bid.** Simple and correct, but not
-  the fastest approach under very high bid volume — batching snapshot
-  writes (e.g. every N bids or every few seconds) would trade a little
-  durability for throughput.
-
-## Note on this build
+## Note
 As with the earlier versions, I wasn't able to `go build`/`go run` this in
 my sandbox (no Go toolchain, no network to install one). I reviewed the
 code carefully — checked imports, brace balance, and every renamed
